@@ -23,6 +23,21 @@ The host is a single Node process that orchestrates per-session agent containers
 
 **Everything is a message.** There is no IPC, no file watcher, no stdin piping between host and container. The two session DBs are the sole IO surface.
 
+## Change Documentation Policy
+
+This repo tracks notable changes in `documentation/` as dated, single-purpose Markdown files. Treat the folder as a first-class reference, not an afterthought.
+
+**Before starting work:**
+- Skim `documentation/` for prior entries relevant to the area you're touching. If a past change-note covers the same code path, read it — it may explain a non-obvious constraint, a workaround, or a decision that should still hold.
+
+**After making changes:**
+- Ask the user: *"Should I add this to `documentation/`?"* Do this once per logical change, after the work is verified working — not for trivial edits (typo fixes, formatting, dependency bumps with no behavioral effect).
+- If the user says yes, create `documentation/<ddmmyyyy>-<short-kebab-slug>.md` where the date is today in DDMMYYYY format (e.g. `19052026-verify-nohup-fallback.md`). One file per change — never append to or rewrite an existing entry.
+- File body should cover: **What changed**, **Why** (root cause / motivation), **Files touched** (paths with line numbers where useful), and **How to verify** (the command or steps that prove it works).
+- If the user says no, don't write the file. Don't re-ask later in the same session.
+
+**Why this exists:** these notes are the durable trail for an install that diverges from upstream. They survive across sessions, across operators, and across the `/update-nanoclaw` flow that rewrites code but leaves `documentation/` alone.
+
 ## Entity Model
 
 ```

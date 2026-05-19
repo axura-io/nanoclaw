@@ -68,7 +68,7 @@ export async function run(_args: string[]): Promise<void> {
     } catch {
       // launchctl not available
     }
-  } else if (mgr === 'systemd') {
+  } else if (mgr === 'systemd' && (isRoot() || hasUserSystemdBus())) {
     const prefix = isRoot() ? 'systemctl' : 'systemctl --user';
     try {
       execSync(`${prefix} is-active ${systemdUnit}`, { stdio: 'ignore' });
@@ -97,22 +97,17 @@ export async function run(_args: string[]): Promise<void> {
         // systemctl not available
       }
     }
-  } else {
-    // Check for nohup PID file
-    const pidFile = path.join(projectRoot, 'nanoclaw.pid');
-    if (fs.existsSync(pidFile)) {
-      try {
-        const raw = fs.readFileSync(pidFile, 'utf-8').trim();
-        const pid = Number(raw);
-        if (raw && Number.isInteger(pid) && pid > 0) {
-          process.kill(pid, 0);
-          service = 'running';
-          runningFromPath = resolveBinaryScript(pid);
-        }
-      } catch {
-        service = 'stopped';
-      }
+    if (service === 'not_found') {
+      checkNohupPid(projectRoot, (s, p) => {
+        service = s;
+        runningFromPath = p;
+      });
     }
+  } else {
+    checkNohupPid(projectRoot, (s, p) => {
+      service = s;
+      runningFromPath = p;
+    });
   }
 
   if (
@@ -278,4 +273,44 @@ function resolveBinaryScript(pid: number): string | null {
 function isPathInside(candidate: string, parent: string): boolean {
   const rel = path.relative(parent, candidate);
   return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+/**
+ * Detects whether `systemctl --user` actually works. On WSL or other
+ * containers where PID 1 is systemd but no per-user dbus is running
+ * (`Failed to connect to bus: No medium found`), service.ts falls back to a
+ * nohup wrapper; verify needs to mirror that decision or it will report
+ * `not_found` for a perfectly healthy nohup-managed process.
+ */
+function hasUserSystemdBus(): boolean {
+  try {
+    execSync('systemctl --user is-system-running', {
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    return true;
+  } catch (err) {
+    const stderr = (err as { stderr?: Buffer }).stderr?.toString() ?? '';
+    // `is-system-running` exits non-zero in "degraded" / "starting" states
+    // even when the bus is fine. Treat only bus-connection failures as
+    // "no user systemd".
+    return !/Failed to connect to bus/i.test(stderr);
+  }
+}
+
+function checkNohupPid(
+  projectRoot: string,
+  set: (service: 'stopped' | 'running', runningFromPath: string | null) => void,
+): void {
+  const pidFile = path.join(projectRoot, 'nanoclaw.pid');
+  if (!fs.existsSync(pidFile)) return;
+  try {
+    const raw = fs.readFileSync(pidFile, 'utf-8').trim();
+    const pid = Number(raw);
+    if (raw && Number.isInteger(pid) && pid > 0) {
+      process.kill(pid, 0);
+      set('running', resolveBinaryScript(pid));
+    }
+  } catch {
+    set('stopped', null);
+  }
 }
