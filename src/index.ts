@@ -62,6 +62,7 @@ import { startCliServer, stopCliServer } from './cli/socket-server.js';
 
 import type { ChannelAdapter, ChannelSetup } from './channels/adapter.js';
 import { initChannelAdapters, teardownChannelAdapters, getChannelAdapter } from './channels/channel-registry.js';
+import { ensureWebhookServer, isInvokeEnabled, stopWebhookServer } from './webhook-server.js';
 
 async function main(): Promise<void> {
   log.info('NanoClaw starting');
@@ -141,6 +142,14 @@ async function main(): Promise<void> {
     };
   });
 
+  // 3b. Programmatic outbound endpoint (opt-in via INVOKE_TOKEN). Native
+  //     adapters (WhatsApp etc.) don't start the webhook server, so start it
+  //     here when an external caller needs POST /invoke.
+  if (isInvokeEnabled()) {
+    ensureWebhookServer();
+    log.info('Invoke endpoint enabled', { path: 'POST /invoke' });
+  }
+
   // 4. Delivery adapter bridge — dispatches to channel adapters
   const deliveryAdapter = {
     async deliver(
@@ -193,6 +202,7 @@ async function shutdown(signal: string): Promise<void> {
   stopDeliveryPolls();
   stopHostSweep();
   await stopCliServer();
+  await stopWebhookServer();
   try {
     await teardownChannelAdapters();
   } finally {
