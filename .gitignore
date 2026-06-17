@@ -11,6 +11,9 @@ store/
 data/
 logs/
 
+# Runtime pid files
+*.pid
+
 # Groups - per-installation state, not tracked
 groups/*
 
