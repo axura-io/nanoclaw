@@ -553,9 +553,10 @@ registerChannelAdapter('whatsapp', {
           // initializes useMultiFileAuthState which can truncate creds.json
           // mid-write when the process exits, leaving a 0-byte creds file
           // and forcing a fresh QR pairing on next start.
-          const shouldReconnect = !shuttingDown && reason !== DisconnectReason.loggedOut;
+          const loggedOut = reason === DisconnectReason.loggedOut;
+          const shouldReconnect = !shuttingDown && !loggedOut;
 
-          log.info('WhatsApp connection closed', { reason, shouldReconnect, shuttingDown });
+          log.info('WhatsApp connection closed', { reason, shouldReconnect, shuttingDown, loggedOut });
 
           if (shouldReconnect) {
             log.info('Reconnecting...');
@@ -567,7 +568,7 @@ registerChannelAdapter('whatsapp', {
                 });
               }, RECONNECT_DELAY_MS);
             });
-          } else {
+          } else if (loggedOut) {
             log.info('WhatsApp logged out');
             // Delete auth credentials immediately. Keeping stale credentials
             // causes the next service restart to attempt authentication with an
@@ -585,6 +586,15 @@ registerChannelAdapter('whatsapp', {
               rejectFirstOpen = undefined;
               resolveFirstOpen = undefined;
             }
+          } else {
+            // Clean shutdown (or any other non-logout close while shutting
+            // down): keep the saved session so it's reused on next start.
+            // Wiping creds here was the bug that forced a re-pair on every
+            // restart/reboot.
+            log.info('WhatsApp connection closed without logout — auth preserved', {
+              reason,
+              shuttingDown,
+            });
           }
         } else if (connection === 'open') {
           connected = true;
